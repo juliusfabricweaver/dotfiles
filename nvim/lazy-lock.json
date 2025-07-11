@@ -14,7 +14,6 @@
   "lualine": { "branch": "master", "commit": "2a5bae925481f999263d6f5ed8361baef8df4f83" },
   "mason": { "branch": "main", "commit": "e2f7f9044ec30067bc11800a9e266664b88cda22" },
   "mason-lspconfig": { "branch": "main", "commit": "f75e877f5266e87523eb5a18fcde2081820d087b" },
-  "metal-pipe.nvim": { "branch": "main", "commit": "d5a3804003dc3b24dccceaf7214498b52330dbf8" },
   "multicursors": { "branch": "main", "commit": "562809aaf203b4c65482a75199166d360f2b9298" },
   "neo-tree": { "branch": "v3.x", "commit": "5d172e8315444dbc32867d1c7b04d8e7e68ec4e1" },
   "neogit": { "branch": "master", "commit": "63124cf520ff24d09deb3b850e053908ab0fc66a" },

@@ -1,0 +1,10 @@
+.DS_Store
+__pycache__/
+*.pyc
+psysh/psysh_history
+ncspot/userstate.cbor
+tmux/plugins/
+kitty/AverageMono/
+kitty/*.zip
+*.otf
+*.ttf
