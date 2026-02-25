@@ -2,11 +2,8 @@ return {
   "NeogitOrg/neogit",
   name = "neogit",
   dependencies = {
-    "nvim-lua/plenary.nvim", -- required
-
-    -- Only one of these is needed, not both.
-    "nvim-telescope/telescope.nvim", -- optional
-    "ibhagwan/fzf-lua",            -- optional
+    "nvim-lua/plenary.nvim",
+    "ibhagwan/fzf-lua",
   },
   keys = {
     {

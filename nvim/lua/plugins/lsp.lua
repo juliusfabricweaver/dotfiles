@@ -1,5 +1,4 @@
 return {
-    -- lps
     {
         "williamboman/mason.nvim",
         name = "mason",
@@ -11,27 +10,6 @@ return {
     {
         "neovim/nvim-lspconfig",
         name = "nvim-lspconfig",
-    },
-    -- completion
-    {
-        "hrsh7th/nvim-cmp",
-        name = "nvim-cmp",
-    },
-    {
-        "hrsh7th/cmp-nvim-lsp",
-        name = "cmp-nvim-lsp",
-    },
-    {
-        "L3MON4D3/LuaSnip",
-        name = "lua-snip",
-        dependencies = {
-            "saadparwaiz1/cmp_luasnip",
-            "rafamadriz/friendly-snippets"
-        }
-    },
-    {
-        "nvimtools/none-ls.nvim",
-        name = "none-ls",
     },
 }
 

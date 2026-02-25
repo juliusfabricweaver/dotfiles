@@ -1,12 +1,7 @@
 vim.opt.signcolumn = 'yes'
 
-local capabilities = require("cmp_nvim_lsp").default_capabilities(vim.lsp.protocol.make_client_capabilities())
-local lspconfig_defaults = require('lspconfig').util.default_config
-lspconfig_defaults.capabilities = vim.tbl_deep_extend(
-  'force',
-  lspconfig_defaults.capabilities,
-  require('cmp_nvim_lsp').default_capabilities()
-)
+-- blink.cmp provides capabilities automatically
+local capabilities = require('blink.cmp').get_lsp_capabilities()
 
 vim.api.nvim_create_autocmd('LspAttach', {
   desc = 'LSP actions',
@@ -27,7 +22,10 @@ require('mason').setup({})
 require('mason-lspconfig').setup({
   ensure_installed = { "lua_ls", "ts_ls", "markdown_oxide", "intelephense" },
   handlers = {
-    function()
+    function(server_name)
+      require("lspconfig")[server_name].setup({ capabilities = capabilities })
+    end,
+    markdown_oxide = function()
       require("lspconfig").markdown_oxide.setup({
         capabilities = vim.tbl_deep_extend(
           'force',
@@ -62,7 +60,7 @@ require('mason-lspconfig').setup({
       })
     end,
     volar = function()
-      require('lspconfig').volar.setup({})
+      require('lspconfig').volar.setup({ capabilities = capabilities })
     end,
     ts_ls = function()
       local vue_typescript_plugin = require('mason-registry')
@@ -72,6 +70,7 @@ require('mason-lspconfig').setup({
           .. '/node_modules/@vue/typescript-plugin'
 
       require('lspconfig').ts_ls.setup({
+        capabilities = capabilities,
         init_options = {
           plugins = {
             {
@@ -93,62 +92,5 @@ require('mason-lspconfig').setup({
         },
       })
     end,
-  },
-})
-
-local cmp = require('cmp')
-local luasnip = require('luasnip')
-
-cmp.setup({
-  sources = cmp.config.sources({
-    { name = 'nvim_lsp' },
-    { name = 'render-markdown' },
-    { name = 'luasnip' },
-  }, {
-    { name = 'buffer' },
-  }),
-  mapping = cmp.mapping.preset.insert({
-    ['<CR>'] = cmp.mapping(function(fallback)
-      if cmp.visible() then
-        if luasnip.expandable() then
-          luasnip.expand()
-        else
-          cmp.confirm({
-            select = true,
-          })
-        end
-      else
-        fallback()
-      end
-    end),
-    ["<Tab>"] = cmp.mapping(function(fallback)
-      if cmp.visible() then
-        cmp.select_next_item()
-      elseif luasnip.locally_jumpable(1) then
-        luasnip.jump(1)
-      else
-        fallback()
-      end
-    end, { "i", "s" }),
-
-    ["<S-Tab>"] = cmp.mapping(function(fallback)
-      if cmp.visible() then
-        cmp.select_prev_item()
-      elseif luasnip.locally_jumpable(-1) then
-        luasnip.jump(-1)
-      else
-        fallback()
-      end
-    end, { "i", "s" }),
-  }),
-  snippet = {
-    expand = function(args)
-      require('luasnip').lsp_expand(args.body)
-    end,
-  },
-  init_options = {
-    markdown_oxide = {
-      keyword_pattern = [[\(\k\| \|\/\|#\)\+]]
-    }
   },
 })
