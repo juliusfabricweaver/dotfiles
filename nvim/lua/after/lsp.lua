@@ -19,78 +19,66 @@ vim.api.nvim_create_autocmd('LspAttach', {
 })
 
 require('mason').setup({})
-require('mason-lspconfig').setup({
-  ensure_installed = { "lua_ls", "ts_ls", "markdown_oxide", "intelephense" },
-  handlers = {
-    function(server_name)
-      require("lspconfig")[server_name].setup({ capabilities = capabilities })
-    end,
-    markdown_oxide = function()
-      require("lspconfig").markdown_oxide.setup({
-        capabilities = vim.tbl_deep_extend(
-          'force',
-          capabilities,
-          {
-            workspace = {
-              didChangeWatchedFiles = {
-                dynamicRegistration = true,
-              },
-            },
-          }
-        ),
-      })
-    end,
-    intelephense = function()
-      require('lspconfig').intelephense.setup({
-        capabilities = capabilities,
-        settings = {
-          intelephense = {
-            storagePath = vim.fn.stdpath("cache") .. "/intelephense",
-            stubs = {
-              "bcmath", "bz2", "calendar", "Core", "curl", "date", "dba", "dom", "enchant",
-              "fileinfo", "filter", "ftp", "gd", "gettext", "hash", "iconv", "imap", "intl",
-              "json", "ldap", "libxml", "mbstring", "mcrypt", "mysql", "mysqli", "password",
-              "pcntl", "pcre", "PDO", "pdo_mysql", "Phar", "readline", "recode", "Reflection",
-              "regex", "session", "SimpleXML", "soap", "sockets", "sodium", "SPL", "standard",
-              "superglobals", "sysvsem", "sysvshm", "tokenizer", "xml", "xdebug", "xmlreader",
-              "xmlwriter", "yaml", "zip", "zlib", "wordpress", "phpunit"
-            }
-          }
-        }
-      })
-    end,
-    volar = function()
-      require('lspconfig').volar.setup({ capabilities = capabilities })
-    end,
-    ts_ls = function()
-      local vue_typescript_plugin = require('mason-registry')
-          .get_package('vue-language-server')
-          :get_install_path()
-          .. '/node_modules/@vue/language-server'
-          .. '/node_modules/@vue/typescript-plugin'
 
-      require('lspconfig').ts_ls.setup({
-        capabilities = capabilities,
-        init_options = {
-          plugins = {
-            {
-              name = "@vue/typescript-plugin",
-              location = vue_typescript_plugin,
-              languages = { 'javascript', 'typescript', 'vue' }
-            },
-          }
-        },
-        filetypes = {
-          'javascript',
-          'javascriptreact',
-          'javascript.jsx',
-          'typescript',
-          'typescriptreact',
-          'typescript.tsx',
-          'vue',
-          'json',
-        },
-      })
-    end,
+-- Default capabilities applied to every server.
+vim.lsp.config('*', { capabilities = capabilities })
+
+local intelephense_cache = vim.fn.stdpath('cache') .. '/intelephense'
+
+vim.lsp.config('intelephense', {
+  init_options = {
+    globalStoragePath = intelephense_cache,
+    storagePath = intelephense_cache,
   },
+  settings = {
+    intelephense = {
+      globalStoragePath = intelephense_cache,
+      storagePath = intelephense_cache,
+      stubs = {
+        "bcmath", "bz2", "calendar", "Core", "curl", "date", "dba", "dom", "enchant",
+        "fileinfo", "filter", "ftp", "gd", "gettext", "hash", "iconv", "imap", "intl",
+        "json", "ldap", "libxml", "mbstring", "mcrypt", "mysql", "mysqli", "password",
+        "pcntl", "pcre", "PDO", "pdo_mysql", "Phar", "readline", "recode", "Reflection",
+        "regex", "session", "SimpleXML", "soap", "sockets", "sodium", "SPL", "standard",
+        "superglobals", "sysvsem", "sysvshm", "tokenizer", "xml", "xdebug", "xmlreader",
+        "xmlwriter", "yaml", "zip", "zlib", "wordpress", "phpunit",
+      },
+    },
+  },
+})
+
+vim.lsp.config('markdown_oxide', {
+  capabilities = vim.tbl_deep_extend('force', capabilities, {
+    workspace = {
+      didChangeWatchedFiles = { dynamicRegistration = true },
+    },
+  }),
+})
+
+local mason_registry = require('mason-registry')
+if mason_registry.is_installed('vue-language-server') then
+  local vue_typescript_plugin = vim.fn.expand('$MASON/packages/vue-language-server')
+      .. '/node_modules/@vue/language-server'
+      .. '/node_modules/@vue/typescript-plugin'
+
+  vim.lsp.config('ts_ls', {
+    init_options = {
+      plugins = {
+        {
+          name = '@vue/typescript-plugin',
+          location = vue_typescript_plugin,
+          languages = { 'javascript', 'typescript', 'vue' },
+        },
+      },
+    },
+    filetypes = {
+      'javascript', 'javascriptreact', 'javascript.jsx',
+      'typescript', 'typescriptreact', 'typescript.tsx',
+      'vue', 'json',
+    },
+  })
+end
+
+require('mason-lspconfig').setup({
+  ensure_installed = { 'lua_ls', 'ts_ls', 'markdown_oxide', 'intelephense' },
 })
