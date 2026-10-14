@@ -3,8 +3,10 @@ __pycache__/
 *.pyc
 psysh/psysh_history
 ncspot/userstate.cbor
-tmux/plugins/
 kitty/AverageMono/
 kitty/*.zip
 *.otf
 *.ttf
+psysh/
+wireshark/recent
+wireshark/recent_common
