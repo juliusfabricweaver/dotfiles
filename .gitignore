@@ -10,3 +10,4 @@ kitty/*.zip
 psysh/
 wireshark/recent
 wireshark/recent_common
+configstore/
