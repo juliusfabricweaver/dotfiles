@@ -11,6 +11,7 @@ SECTION_RIGHT = ""
 COMPONENT_LEFT = ""
 ICON_DATE = ""
 ICON_TIME = ""
+ICON_ZOOM = "󰁌"
 
 # lualine gruvbox_dark "normal" theme: a / b / c sections
 A_FG, A_BG = as_rgb(0x282828), as_rgb(0xA89984)
@@ -82,6 +83,9 @@ def draw_tab(
     screen.cursor.bg = bg
     screen.cursor.bold = tab.is_active
     draw_title(draw_data, screen, tab, index, max_title_length)
+    # zoomed (toggle_layout stack) with more than one pane
+    if tab.layout_name == "stack" and tab.num_window_groups > 1:
+        screen.draw(f"{ICON_ZOOM} ")
     _prev_bg = bg
 
     if is_last:
