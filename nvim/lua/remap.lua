@@ -6,6 +6,7 @@ vim.keymap.set("n", "<leader>v", ":sv<CR>", {})
 vim.keymap.set({"n", "v"}, "J", "3j")
 vim.keymap.set({"n", "v"}, "K", "3k")
 vim.keymap.set("n", "<Esc>", "<cmd>nohlsearch<CR>", { silent = true })
+vim.keymap.set({"n", "v"}, "<C-z>", "<Nop>")
 
 vim.opt.clipboard = "unnamedplus"
 vim.keymap.set({"n", "v"}, "<leader>y", '"+y', { noremap = true, silent = true })
