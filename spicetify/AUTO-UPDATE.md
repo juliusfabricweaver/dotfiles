@@ -4,11 +4,10 @@ Spicetify has no built-in auto-update, so a launchd agent runs a script daily.
 
 ## Pieces
 
-- `~/.config/spicetify/auto-update.sh` (tracked in this repo)
-  ```zsh
-  spicetify upgrade -n
-  spicetify backup apply -n
-  ```
+- `~/.config/spicetify/auto-update.sh` (tracked in this repo). It upgrades the
+  spicetify binary itself (GitHub release tarball untarred into `~/.spicetify`,
+  exactly what `spicetify upgrade` does internally) and then runs
+  `spicetify backup apply -n`.
 - `~/Library/LaunchAgents/com.spicetify.autoupdate.plist` (NOT in the repo)
   - Label `com.spicetify.autoupdate`
   - Runs the script at login (`RunAtLoad`) and daily at 12:00
@@ -17,14 +16,18 @@ Spicetify has no built-in auto-update, so a launchd agent runs a script daily.
 Spicetify itself is installed via the official install script in `~/.spicetify`
 (not Homebrew). Config is `config-xpui.ini` here; only `marketplace` is used.
 
-## Why `-n` on BOTH commands
+## Why the script does not call `spicetify upgrade`
 
-`-n` / `--no-restart` prevents spicetify from killing/launching Spotify.
-Without it the job launches Spotify every day even when it was closed.
+`-n` / `--no-restart` prevents spicetify from killing/launching Spotify, but it
+is not enough for `upgrade`. In `spicetify.go` (upgrade branch), when a new
+version is actually installed, spicetify re-execs the *new* binary with a plain
+`backup apply` and no `-n`. That child process restarts Spotify even if it was
+closed. This is what launched Spotify at noon on 2026-10-21 (2.45.3 -> 2.46.2).
 
-- `spicetify upgrade` without `-n`, when already up to date, runs its own
-  "fix it for you" `backup apply` step which restarts Spotify. `-n` skips it.
-- `spicetify backup apply` without `-n` always restarts Spotify.
+So the script replicates the upgrade (download tarball, `tar -xzf` into
+`~/.spicetify`) and keeps `-n` on every spicetify call. After a binary upgrade it
+runs `backup apply -n`, falling back to `restore backup apply -n` if Spotify is
+already patched, which is what `upgrade` does itself.
 
 ## Expected behaviour
 
@@ -32,7 +35,7 @@ Without it the job launches Spotify every day even when it was closed.
   be backed up again" and exits 1. This is normal and harmless (no-op).
 - Spotify updated: client is stock again, so spicetify re-backs-up and
   re-applies the theme on disk. Takes effect next time Spotify is opened.
-- New spicetify release: `upgrade -n` installs it.
+- New spicetify release: the script downloads it and re-applies, no restart.
 
 ## Managing
 
