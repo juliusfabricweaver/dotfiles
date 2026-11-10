@@ -1,18 +1,28 @@
--- adding lazy.nvim
-local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
-if not (vim.uv or vim.loop).fs_stat(lazypath) then
-    vim.fn.system({
-        "git",
-        "clone",
-        "--filter=blob:none",
-        "https://github.com/folke/lazy.nvim.git",
-        "--branch=stable", -- latest stable release
-        lazypath,
-    })
-end
-vim.opt.rtp:prepend(lazypath)
-
 require("set")
 require("remap")
-require("lazy").setup("plugins")
+require("pack") -- installs and loads plugins (vim.pack)
+
+-- Plugin configuration, in load order.
+for _, name in ipairs({
+  "gruvbox",
+  "snacks",
+  "treesitter",
+  "render-markdown",
+  "colorizer",
+  "blink",
+  "autopairs",
+  "conform",
+  "trouble",
+  "fzf-lua",
+  "oil",
+  "undotree",
+  "gitsigns",
+  "neogit",
+  "diffview",
+  "git-conflict",
+  "lualine",
+}) do
+  require("plugins." .. name)
+end
+
 require("after")
