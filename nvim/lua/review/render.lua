@@ -93,7 +93,11 @@ local function row_text(row, side)
   if kind == "header" then
     return header(row.file)
   elseif kind == "hunk" then
-    return diff.hunk_text(row.hunk)
+    local text = diff.hunk_text(row.hunk)
+    if row.folded then
+      text = text .. ("   ⋯ %d lines"):format(#row.hunk.lines)
+    end
+    return text
   elseif kind == "expander" then
     return row.text
   end
@@ -256,7 +260,7 @@ function M.statuscolumn()
     local fold = side == "new" and " " or (row.file.collapsed and "▸" or "▾")
     return "%#ReviewFold# " .. fold .. string.rep(" ", numbers)
   elseif kind == "hunk" or kind == "expander" then
-    local arrow = side == "new" and " " or "↕"
+    local arrow = side == "new" and " " or (row.folded and "▸" or "↕")
     local left = math.floor((numbers - 1) / 2)
     return "%#ReviewHunkLnum#"
       .. string.rep(" ", left)

@@ -66,9 +66,8 @@ added and removed, and how many files you have marked viewed.
 path, lines added and removed, a five-block bar showing the added/removed
 ratio, and the Viewed box. A renamed file reads `old/path → new/path`.
 
-**Hunk row.** The `@@ -12,9 +12,11 @@` row starts each block of changes. The
-`↕` in its gutter means there are hidden unchanged lines above that you can
-reveal.
+**Hunk row.** The `@@ -12,9 +12,11 @@` row starts each block of changes.
+Unchanged lines between hunks are hidden; `e` shows them for the whole file.
 
 **Diff rows.** Two line-number columns (old file, new file), then `+` or `-`,
 then the code. Added rows are tinted green, removed rows red. When a removed
@@ -114,27 +113,37 @@ open.
 | Key | Action |
 |-----|--------|
 | `x` | Mark the file viewed, or unmark it |
-| `Tab` or `za` | Fold or unfold the file without marking it |
+| `Tab` or `za` | Fold or unfold the hunk you are in; on a file header, the whole file |
 
-Both also work on a file in the tree.
+A folded hunk shrinks to its `@@` row, which shows `▸` and how many lines it is
+hiding. `Tab` on that row opens it again. Folded hunks are not remembered
+between sessions.
+
+Both keys also work in the file tree. On a file they act on that file. On a folder
+they act on every file inside it, subfolders included: if all of them are
+already viewed (or folded), they are all unmarked (or unfolded); otherwise they
+are all marked (or folded).
 
 ### Changing the view
 
 | Key | Action |
 |-----|--------|
 | `s` | Switch between unified and side-by-side |
-| `e` | Reveal 20 more hidden lines |
-| `E` | Reveal all hidden lines there |
+| `e` | Show all hidden lines of the file, or hide them again |
 | `b` | Pick another branch to compare against |
 | `t` | Hide or show the file tree |
 | `R` | Reload |
 | `q` | Close the review |
 | `g?` | Show the key list |
 
-`e` and `E` act on the gap above the hunk your cursor is in, or on the gap at
-the end of the file when the cursor is on the "… more lines" row. Stay on the
-`@@` row and press `e` repeatedly to keep revealing. Once a gap is fully
-revealed, the two hunks join into one.
+`e` is a toggle for the file your cursor is in. It shows every unchanged line
+git left out, so you see the whole file with the changes in place and no `@@`
+rows in between. Press `e` again anywhere in the file to hide them all again.
+Other files are not affected.
+
+Showing hidden lines and folding hunks do not affect each other. A folded hunk
+stays folded when the lines above it are shown, and keeps its `@@` row so you
+can open it. Folding a hunk never hides lines that `e` revealed.
 
 ### Ordinary Vim keys
 
@@ -185,7 +194,6 @@ require("review").setup({
   fallback_bases = { "main", "master" },-- tried when default_base is missing
   sidebar_width = 36,                   -- columns for the file tree
   large_diff = 1000,                    -- changed lines above which a file starts collapsed
-  context_step = 20,                    -- lines revealed by `e`
   max_file_bytes = 1024 * 1024,         -- larger files get no context expansion or syntax colours
 })
 ```

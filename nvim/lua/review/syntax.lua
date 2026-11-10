@@ -53,8 +53,15 @@ end
 
 local function wanted(f, side)
   local needed, lo, hi = {}, math.huge, 0
+  local groups = {}
   for _, h in ipairs(f.hunks) do
-    for _, l in ipairs(h.lines) do
+    groups[#groups + 1] = h.lines
+  end
+  for gi in pairs(f.open_gaps or {}) do
+    groups[#groups + 1] = require("review.diff").gap_lines(f, gi)
+  end
+  for _, lines in ipairs(groups) do
+    for _, l in ipairs(lines) do
       local n
       if side == "old" then
         n = l.t == "-" and l.old or nil

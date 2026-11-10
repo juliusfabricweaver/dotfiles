@@ -210,59 +210,65 @@ function M.words(f)
   end
 end
 
--- Context expansion ----------------------------------------------------------
+-- Hidden context ------------------------------------------------------------
+--
+-- A file with n hunks has n + 1 gaps of unchanged lines: gap i sits above
+-- hunk i, gap n + 1 after the last hunk. A gap is either hidden or shown
+-- (f.open_gaps). Hunks themselves are never modified, so showing a gap and
+-- folding a hunk (h.folded) are independent of each other.
 
-function M.gap_above(f, hi)
-  local h, prev = f.hunks[hi], f.hunks[hi - 1]
-  return h.nstart - 1 - (prev and prev.nend or 0)
-end
-
-function M.gap_below(f)
-  local last = f.hunks[#f.hunks]
-  if not last or not f.new_lines then
+function M.gap_size(f, gi)
+  if not f.new_lines or #f.hunks == 0 then
     return 0
   end
-  return math.max(0, #f.new_lines - last.nend)
+  local prev = f.hunks[gi - 1]
+  if gi > #f.hunks then
+    return math.max(0, #f.new_lines - prev.nend)
+  end
+  return math.max(0, f.hunks[gi].nstart - 1 - (prev and prev.nend or 0))
 end
 
---- Reveal `count` (nil = all) unchanged lines above hunk `hi`.
---- Returns the first revealed new-line number and the hunk they now belong to.
-function M.expand_above(f, hi, count)
-  local h, gap = f.hunks[hi], M.gap_above(f, hi)
-  if gap <= 0 or not f.new_lines then
-    return nil
-  end
-  local k = math.min(count or gap, gap)
-  local add = {}
-  for j = k, 1, -1 do
-    local n = h.nstart - j
-    add[#add + 1] = { t = " ", text = f.new_lines[n] or "", old = h.ostart - j, new = n }
-  end
-  h.lines = vim.list_extend(add, h.lines)
-  h.nstart, h.ostart, h.text = h.nstart - k, h.ostart - k, nil
-  local first = h.nstart
-  if k == gap and hi > 1 then
-    local prev = f.hunks[hi - 1]
-    vim.list_extend(prev.lines, h.lines)
-    prev.nend, prev.oend = h.nend, h.oend
-    table.remove(f.hunks, hi)
-    return first, prev
-  end
-  return first, h
+function M.gap_open(f, gi)
+  return f.open_gaps ~= nil and f.open_gaps[gi] == true and M.gap_size(f, gi) > 0
 end
 
---- Reveal `count` (nil = all) unchanged lines after the last hunk.
-function M.expand_below(f, count)
-  local gap, h = M.gap_below(f), f.hunks[#f.hunks]
-  if gap <= 0 then
+--- The unchanged lines of gap `gi`, as line objects.
+function M.gap_lines(f, gi)
+  f.gap_cache = f.gap_cache or {}
+  local lines = f.gap_cache[gi]
+  if not lines then
+    lines = {}
+    local prev = f.hunks[gi - 1]
+    local pn, po = prev and prev.nend or 0, prev and prev.oend or 0
+    for k = 1, M.gap_size(f, gi) do
+      lines[k] = { t = " ", text = f.new_lines[pn + k] or "", old = po + k, new = pn + k }
+    end
+    f.gap_cache[gi] = lines
+  end
+  return lines
+end
+
+--- Show every gap of the file, or hide them all again when they are all
+--- shown already. Returns true (now shown), false (now hidden), or nil when
+--- the file has no hidden lines at all.
+function M.toggle_gaps(f)
+  local any, all = false, true
+  for gi = 1, #f.hunks + 1 do
+    if M.gap_size(f, gi) > 0 then
+      any = true
+      all = all and M.gap_open(f, gi)
+    end
+  end
+  if not any then
     return nil
   end
-  local k = math.min(count or gap, gap)
-  for j = 1, k do
-    h.lines[#h.lines + 1] = { t = " ", text = f.new_lines[h.nend + j] or "", old = h.oend + j, new = h.nend + j }
+  f.open_gaps = {}
+  if not all then
+    for gi = 1, #f.hunks + 1 do
+      f.open_gaps[gi] = true
+    end
   end
-  h.nend, h.oend, h.text = h.nend + k, h.oend + k, nil
-  return h.nend - k + 1, h
+  return not all
 end
 
 function M.hunk_text(h)
@@ -301,9 +307,30 @@ function M.rows(files, view)
         push({ kind = "note", file = f, text = f.status == "R" and "File renamed without changes" or "No content changes" })
       else
         M.words(f)
-        for _, h in ipairs(f.hunks) do
-          push({ kind = "hunk", file = f, hunk = h })
-          if view == "unified" then
+        local unified = view == "unified"
+        -- revealed context: plain rows that still belong to hunk `h` for folding
+        local function push_gap(gi, h)
+          for _, l in ipairs(M.gap_lines(f, gi)) do
+            if unified then
+              push({ kind = "line", file = f, hunk = h, gap = gi, line = l })
+            else
+              push({ kind = "line", file = f, hunk = h, gap = gi, l = l, r = l })
+            end
+          end
+        end
+        for hi, h in ipairs(f.hunks) do
+          local open = M.gap_open(f, hi)
+          if open then
+            push_gap(hi, h)
+          end
+          -- with the gap above shown the code runs on without a @@ row,
+          -- unless the hunk is folded and the row is all there is of it
+          if h.folded or not open then
+            push({ kind = "hunk", file = f, hunk = h, folded = h.folded })
+          end
+          if h.folded then
+            -- nothing more
+          elseif unified then
             for _, l in ipairs(h.lines) do
               push({ kind = "line", file = f, hunk = h, line = l })
             end
@@ -336,8 +363,11 @@ function M.rows(files, view)
             end
           end
         end
-        local below = M.gap_below(f)
-        if below > 0 then
+        local last = #f.hunks + 1
+        local below = M.gap_size(f, last)
+        if M.gap_open(f, last) then
+          push_gap(last, f.hunks[#f.hunks])
+        elseif below > 0 then
           push({ kind = "expander", file = f, hunk = f.hunks[#f.hunks], text = ("%d more lines"):format(below) })
         end
       end

@@ -440,6 +440,41 @@ local function target_file(st)
   return row and row.file
 end
 
+--- Files under the sidebar cursor: the file itself, or everything inside the
+--- folder when the cursor is on a folder row.
+local function sidebar_files(st)
+  local i = api.nvim_win_get_cursor(st.swin)[1]
+  local e = st.tree[i]
+  if not e then
+    return {}
+  elseif e.file then
+    return { e.file }
+  end
+  local list = {}
+  for j = i + 1, #st.tree do
+    local c = st.tree[j]
+    if c.depth <= e.depth then
+      break
+    end
+    if c.file then
+      list[#list + 1] = c.file
+    end
+  end
+  return list
+end
+
+--- Flip `field` on a set of files as one: if every file already has it, clear
+--- it on all of them, otherwise set it on all of them.
+local function toggle_all(files, field)
+  local all = true
+  for _, f in ipairs(files) do
+    all = all and f[field]
+  end
+  for _, f in ipairs(files) do
+    f[field] = not all
+  end
+end
+
 local function next_file(st, f)
   for i, c in ipairs(st.files) do
     if c == f then
@@ -449,6 +484,16 @@ local function next_file(st, f)
 end
 
 function A.toggle_viewed(st)
+  if in_sidebar(st) then
+    local files = sidebar_files(st)
+    toggle_all(files, "viewed")
+    for _, f in ipairs(files) do
+      f.collapsed = f.viewed
+    end
+    save_viewed(st)
+    redraw(st)
+    return
+  end
   local f = target_file(st)
   if not f then
     return
@@ -456,10 +501,6 @@ function A.toggle_viewed(st)
   f.viewed = not f.viewed
   f.collapsed = f.viewed
   save_viewed(st)
-  if in_sidebar(st) then
-    redraw(st)
-    return
-  end
   render.page(st)
   if f.viewed then
     -- Like GitHub: the file folds away and the next one slides up under it.
@@ -472,15 +513,42 @@ function A.toggle_viewed(st)
 end
 
 function A.toggle_fold(st)
-  local f = target_file(st)
-  if not f then
-    return
-  end
-  f.collapsed = not f.collapsed
   if in_sidebar(st) then
+    toggle_all(sidebar_files(st), "collapsed")
     redraw(st)
     return
   end
+  local row, lnum = cursor_row(st)
+  if not row or row.kind == "blank" then
+    return
+  end
+  if row.hunk then
+    -- inside a hunk: fold just that hunk down to its @@ row
+    local h = row.hunk
+    h.folded = not h.folded or nil
+    -- keep the hunk where it is on screen: find where it currently starts
+    local start = lnum
+    for i = row.file.first_row, row.file.last_row do
+      local r = st.rows[i]
+      if r.hunk == h and not r.gap and r.kind ~= "expander" then
+        start = i
+        break
+      end
+    end
+    local first = h.lines[1] or {}
+    local top = vim.fn.line("w0", page_win(st))
+    redraw(st, {
+      path = row.file.path,
+      kind = "hunk",
+      hunk = h,
+      old = first.old,
+      new = first.new,
+      offset = math.max(0, start - top),
+    })
+    return
+  end
+  local f = row.file
+  f.collapsed = not f.collapsed
   local a = anchor_of(st)
   redraw(st, { path = f.path, kind = "header", offset = math.min(a.offset, 3) })
 end
@@ -527,48 +595,34 @@ function A.prev_hunk(st)
   step_hunk(st, -1)
 end
 
-local function expand(st, count)
+--- Show every hidden line of the file under the cursor, or hide them again.
+function A.toggle_context(st)
   local row = cursor_row(st)
-  if not row or not row.hunk then
+  if not row or row.kind == "blank" then
     return
   end
   local f, a = row.file, anchor_of(st)
-  local first, hunk
-  if row.kind == "expander" then
-    first, hunk = diff.expand_below(f, count)
-    a.hunk = hunk
-  else
-    local hi
-    for i, h in ipairs(f.hunks) do
-      if h == row.hunk then
-        hi = i
-      end
-    end
-    first, hunk = diff.expand_above(f, hi, count)
-    if first then
-      -- Stay on the hunk bar while it exists, so the key can be repeated.
-      a = { path = f.path, kind = "hunk", hunk = hunk, new = first, offset = a.offset }
-      if hunk ~= row.hunk then
-        a.kind = "line"
-      end
-    end
-  end
-  if not first then
-    notify(f.new_lines and "nothing more to expand here" or "context is not available for this file")
+  local shown = diff.toggle_gaps(f)
+  if shown == nil then
+    notify(f.new_lines and "no hidden lines in this file" or "context is not available for this file")
     return
   end
   if f.syn then
     syntax.compute(f)
   end
+  local last = f.hunks[#f.hunks]
+  if row.kind == "expander" or (row.gap == #f.hunks + 1 and not shown) then
+    -- end of the file: the first revealed line and the "more lines" row
+    -- take each other's place
+    a = shown and { path = f.path, kind = "line", new = last.nend + 1, offset = a.offset }
+      or { path = f.path, kind = "expander", hunk = last, offset = a.offset }
+  elseif row.kind == "hunk" then
+    -- a @@ row disappears while the lines above it are shown: stay with the
+    -- hunk's first line then
+    local first = row.hunk.lines[1] or {}
+    a.old, a.new = first.old, first.new
+  end
   redraw(st, a)
-end
-
-function A.expand(st)
-  expand(st, S.config.context_step)
-end
-
-function A.expand_all(st)
-  expand(st, nil)
 end
 
 function A.toggle_view(st)
@@ -727,14 +781,13 @@ end
 
 local keys = {
   { "x", "toggle_viewed", "mark the file viewed (collapses it)" },
-  { "<Tab>", "toggle_fold", "fold / unfold the file" },
+  { "<Tab>", "toggle_fold", "fold / unfold the hunk (on a file header: the file)" },
   { "za", "toggle_fold" },
   { "]f", "next_file", "next file" },
   { "[f", "prev_file", "previous file" },
   { "]h", "next_hunk", "next hunk" },
   { "[h", "prev_hunk", "previous hunk" },
-  { "e", "expand", "show 20 more lines of context (on a @@ row)" },
-  { "E", "expand_all", "show all hidden lines there" },
+  { "e", "toggle_context", "show / hide all hidden lines of the file" },
   { "s", "toggle_view", "split / unified" },
   { "b", "pick_base", "compare against another branch" },
   { "<CR>", "enter", "open the real file at this line" },
