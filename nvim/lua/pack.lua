@@ -53,7 +53,6 @@ vim.pack.add({
   -- files and navigation
   gh("ibhagwan/fzf-lua"),
   gh("stevearc/oil.nvim"),
-  gh("mbbill/undotree"),
   gh("knubie/vim-kitty-navigator"), -- tells kitty IS_VIM=true so ctrl+hjkl reach nvim
 
   -- git
