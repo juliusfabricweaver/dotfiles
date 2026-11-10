@@ -19,7 +19,7 @@ for _, name in ipairs({
   "gitsigns",
   "neogit",
   "diffview",
-  "git-conflict",
+  "diffs",
   "lualine",
 }) do
   require("plugins." .. name)

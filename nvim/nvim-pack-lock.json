@@ -13,6 +13,10 @@
       "rev": "016802de402556da54c36bd7359b441266b01cdd",
       "src": "https://github.com/stevearc/conform.nvim"
     },
+    "diffs.nvim": {
+      "rev": "e313128621848cb6a244beb687272c1d542fb580",
+      "src": "https://github.com/barrettruth/diffs.nvim"
+    },
     "diffview.nvim": {
       "rev": "4516612fe98ff56ae0415a259ff6361a89419b0a",
       "src": "https://github.com/sindrets/diffview.nvim"
@@ -20,11 +24,6 @@
     "fzf-lua": {
       "rev": "22f0bbd3140a8a3b34fec75e5a640513ca6d4ce3",
       "src": "https://github.com/ibhagwan/fzf-lua"
-    },
-    "git-conflict.nvim": {
-      "rev": "4bbfdd92d547d2862a75b4e80afaf30e73f7bbb4",
-      "src": "https://github.com/akinsho/git-conflict.nvim",
-      "version": ">=0.0.0"
     },
     "gitsigns.nvim": {
       "rev": "ef707fb93301a9b856f36eae4c8f56f5b988a794",

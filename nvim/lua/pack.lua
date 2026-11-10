@@ -60,7 +60,7 @@ vim.pack.add({
   gh("lewis6991/gitsigns.nvim"),
   gh("NeogitOrg/neogit"),
   gh("sindrets/diffview.nvim"),
-  { src = gh("akinsho/git-conflict.nvim"), version = vim.version.range("*") },
+  gh("barrettruth/diffs.nvim"), -- treesitter highlighting in diffs, conflict resolution
 
   -- statusline
   gh("nvim-lualine/lualine.nvim"),
