@@ -14,6 +14,7 @@ for _, name in ipairs({
   "conform",
   "trouble",
   "fzf-lua",
+  "review",
   "oil",
   "undotree",
   "gitsigns",
