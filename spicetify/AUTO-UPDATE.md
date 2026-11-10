@@ -64,15 +64,16 @@ Plist contents, in case it needs recreating on a new machine:
 </plist>
 ```
 
-## Git: `[Backup] version` line is filtered out
+## Git: `[Backup]` version lines are filtered out
 
-`config-xpui.ini` has a `version = ...` line under `[Backup]` that changes every
-time Spotify updates. `.gitattributes` routes the file through a clean filter that
-blanks that value on commit, so it never shows as a diff. The filter definition
+`config-xpui.ini` has `version = ...` and `with = ...` lines under `[Backup]`. The
+first changes every time Spotify updates, the second every time Spicetify does.
+`.gitattributes` routes the file through a clean filter that blanks both values on
+commit, so they never show as a diff. The filter definition
 is local git config, so on a fresh clone run once:
 
 ```zsh
-git config filter.spicetify-backup-version.clean "sed -E 's/^(version *= *).*/\1/'"
+git config filter.spicetify-backup-version.clean "sed -E 's/^((version|with) *= *).*/\1/'"
 git config filter.spicetify-backup-version.smudge cat
 ```
 
