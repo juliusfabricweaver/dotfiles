@@ -256,6 +256,12 @@ The full list is in `lua/review/hl.lua`.
 | `state.lua` | The open review and the configuration |
 | `async.lua` | Helpers for running git without blocking |
 
+**Large diffs.** The page can hold hundreds of thousands of rows. Colours are
+not stored on the buffer: they are applied only to the rows on screen each time
+Neovim draws, and syntax colours for a file are worked out the first time that
+file scrolls into view. Folding, marking viewed and showing hidden lines redo
+only the rows of the file concerned.
+
 `git.lua` produces a list of file diffs and `render.lua` draws a list of file
 diffs, so a second source, such as a real GitHub pull request, can be added
 without touching the drawing code.

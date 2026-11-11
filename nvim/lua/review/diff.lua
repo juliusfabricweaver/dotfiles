@@ -289,90 +289,104 @@ end
 -- row.kind: "blank" | "header" | "hunk" | "line" | "note" | "expander"
 -- line rows carry `line` in unified view, and `l` / `r` (either may be nil,
 -- meaning a filler cell) in split view.
-function M.rows(files, view)
-  local rows = {}
+--- The rows of one file: its header, then (unless collapsed) its body.
+function M.file_rows(f, view)
+  local rows = { { kind = "header", file = f } }
   local function push(row)
     rows[#rows + 1] = row
   end
-  for fi, f in ipairs(files) do
-    if fi > 1 then
-      push({ kind = "blank", file = f })
-    end
-    push({ kind = "header", file = f })
-    f.first_row = #rows
-    if not f.collapsed then
-      if f.binary then
-        push({ kind = "note", file = f, text = "Binary file not shown" })
-      elseif #f.hunks == 0 then
-        push({ kind = "note", file = f, text = f.status == "R" and "File renamed without changes" or "No content changes" })
+  if f.collapsed then
+    return rows
+  end
+  if f.binary then
+    push({ kind = "note", file = f, text = "Binary file not shown" })
+    return rows
+  elseif #f.hunks == 0 then
+    push({ kind = "note", file = f, text = f.status == "R" and "File renamed without changes" or "No content changes" })
+    return rows
+  end
+  M.words(f)
+  local unified = view == "unified"
+  -- revealed context: plain rows that still belong to hunk `h` for folding
+  local function push_gap(gi, h)
+    for _, l in ipairs(M.gap_lines(f, gi)) do
+      if unified then
+        push({ kind = "line", file = f, hunk = h, gap = gi, line = l })
       else
-        M.words(f)
-        local unified = view == "unified"
-        -- revealed context: plain rows that still belong to hunk `h` for folding
-        local function push_gap(gi, h)
-          for _, l in ipairs(M.gap_lines(f, gi)) do
-            if unified then
-              push({ kind = "line", file = f, hunk = h, gap = gi, line = l })
-            else
-              push({ kind = "line", file = f, hunk = h, gap = gi, l = l, r = l })
-            end
+        push({ kind = "line", file = f, hunk = h, gap = gi, l = l, r = l })
+      end
+    end
+  end
+  for hi, h in ipairs(f.hunks) do
+    local open = M.gap_open(f, hi)
+    if open then
+      push_gap(hi, h)
+    end
+    -- with the gap above shown the code runs on without a @@ row, unless
+    -- the hunk is folded and the row is all there is of it
+    if h.folded or not open then
+      push({ kind = "hunk", file = f, hunk = h, folded = h.folded })
+    end
+    if h.folded then
+      -- nothing more
+    elseif unified then
+      for _, l in ipairs(h.lines) do
+        push({ kind = "line", file = f, hunk = h, line = l })
+      end
+    else
+      local i, n = 1, #h.lines
+      while i <= n do
+        local l = h.lines[i]
+        if l.t == " " then
+          push({ kind = "line", file = f, hunk = h, l = l, r = l })
+          i = i + 1
+        else
+          local d = i
+          while i <= n and h.lines[i].t == "-" do
+            i = i + 1
           end
-        end
-        for hi, h in ipairs(f.hunks) do
-          local open = M.gap_open(f, hi)
-          if open then
-            push_gap(hi, h)
+          local a = i
+          while i <= n and h.lines[i].t == "+" do
+            i = i + 1
           end
-          -- with the gap above shown the code runs on without a @@ row,
-          -- unless the hunk is folded and the row is all there is of it
-          if h.folded or not open then
-            push({ kind = "hunk", file = f, hunk = h, folded = h.folded })
+          for k = 0, math.max(a - d, i - a) - 1 do
+            push({
+              kind = "line",
+              file = f,
+              hunk = h,
+              l = d + k < a and h.lines[d + k] or nil,
+              r = a + k < i and h.lines[a + k] or nil,
+            })
           end
-          if h.folded then
-            -- nothing more
-          elseif unified then
-            for _, l in ipairs(h.lines) do
-              push({ kind = "line", file = f, hunk = h, line = l })
-            end
-          else
-            local i, n = 1, #h.lines
-            while i <= n do
-              local l = h.lines[i]
-              if l.t == " " then
-                push({ kind = "line", file = f, hunk = h, l = l, r = l })
-                i = i + 1
-              else
-                local d = i
-                while i <= n and h.lines[i].t == "-" do
-                  i = i + 1
-                end
-                local a = i
-                while i <= n and h.lines[i].t == "+" do
-                  i = i + 1
-                end
-                for k = 0, math.max(a - d, i - a) - 1 do
-                  push({
-                    kind = "line",
-                    file = f,
-                    hunk = h,
-                    l = d + k < a and h.lines[d + k] or nil,
-                    r = a + k < i and h.lines[a + k] or nil,
-                  })
-                end
-              end
-            end
-          end
-        end
-        local last = #f.hunks + 1
-        local below = M.gap_size(f, last)
-        if M.gap_open(f, last) then
-          push_gap(last, f.hunks[#f.hunks])
-        elseif below > 0 then
-          push({ kind = "expander", file = f, hunk = f.hunks[#f.hunks], text = ("%d more lines"):format(below) })
         end
       end
     end
-    f.last_row = #rows
+  end
+  local last = #f.hunks + 1
+  local below = M.gap_size(f, last)
+  if M.gap_open(f, last) then
+    push_gap(last, f.hunks[#f.hunks])
+  elseif below > 0 then
+    push({ kind = "expander", file = f, hunk = f.hunks[#f.hunks], text = ("%d more lines"):format(below) })
+  end
+  return rows
+end
+
+--- All rows of the page. Records each file's first_row (its header) and
+--- last_row; files are separated by one blank row.
+function M.rows(files, view)
+  local rows, n = {}, 0
+  for fi, f in ipairs(files) do
+    if fi > 1 then
+      n = n + 1
+      rows[n] = { kind = "blank", file = f }
+    end
+    f.first_row = n + 1
+    for _, row in ipairs(M.file_rows(f, view)) do
+      n = n + 1
+      rows[n] = row
+    end
+    f.last_row = n
   end
   return rows
 end

@@ -72,7 +72,8 @@ local function adopt(st, data)
   return changed
 end
 
--- Syntax colours are computed in the background, one file at a time.
+-- Syntax colours are computed only for files that come into view (the page
+-- reports them through st.on_visible), in the background, one at a time.
 local function kick_syntax(st)
   if st.syn_running then
     return
@@ -80,24 +81,18 @@ local function kick_syntax(st)
   st.syn_running = true
   async.run(function()
     local ok, err = pcall(function()
-      while S.cur == st do
-        local f
-        for _, c in ipairs(st.files) do
-          if not c.collapsed and not c.syn and not c.binary and #c.hunks > 0 then
-            f = c
-            break
+      while S.cur == st and #st.syn_queue > 0 do
+        local f = table.remove(st.syn_queue, 1)
+        if not f.syn and vim.tbl_contains(st.files, f) then
+          if f.old_text == nil and f.removed > 0 and f.status ~= "A" then
+            f.old_text = git.exec(st.root, { "show", st.merge_base .. ":" .. (f.old_path or f.path) }) or false
+          end
+          syntax.compute(f)
+          if S.cur == st then
+            render.refresh(st)
           end
         end
-        if not f then
-          break
-        end
-        if f.old_text == nil and f.removed > 0 and f.status ~= "A" then
-          f.old_text = git.exec(st.root, { "show", st.merge_base .. ":" .. (f.old_path or f.path) }) or false
-        end
-        syntax.compute(f)
-        if S.cur == st and vim.tbl_contains(st.files, f) then
-          render.apply_syntax(st, f)
-        end
+        f.syn_queued = nil
         async.yield()
       end
     end)
@@ -106,6 +101,20 @@ local function kick_syntax(st)
       notify("syntax highlighting failed: " .. tostring(err), vim.log.levels.WARN)
     end
   end)
+end
+
+local function watch_visible(st)
+  st.syn_queue = {}
+  st.on_visible = function(f)
+    f.syn_queued = true
+    st.syn_queue[#st.syn_queue + 1] = f
+    -- called while drawing: start the work once drawing is over
+    vim.schedule(function()
+      if S.cur == st then
+        kick_syntax(st)
+      end
+    end)
+  end
 end
 
 -- Cursor and view --------------------------------------------------------------
@@ -203,12 +212,16 @@ local function set_view(st, lnum, topline)
 end
 
 --- Redraw, keeping the cursor on the same row at the same screen position.
-local function redraw(st, anchor)
+--- With `files`, only those files' rows are redone (cheap on a huge diff).
+local function redraw(st, anchor, files)
   anchor = anchor or anchor_of(st)
-  render.page(st)
+  if files then
+    render.update_files(st, files)
+  else
+    render.page(st)
+  end
   local lnum = anchor.path and find_row(st, anchor) or 1
   set_view(st, lnum, lnum - (anchor.offset or 0))
-  kick_syntax(st)
 end
 
 local function jump_to_file(st, f)
@@ -421,6 +434,7 @@ function M.open(base)
     M.close()
     hl.setup()
     st = { root = root, base_ref = ref, view = "unified", rows = {}, files = {} }
+    watch_visible(st)
     adopt(st, data)
     create_ui(st)
     S.cur = st
@@ -491,7 +505,7 @@ function A.toggle_viewed(st)
       f.collapsed = f.viewed
     end
     save_viewed(st)
-    redraw(st)
+    redraw(st, nil, files)
     return
   end
   local f = target_file(st)
@@ -501,7 +515,7 @@ function A.toggle_viewed(st)
   f.viewed = not f.viewed
   f.collapsed = f.viewed
   save_viewed(st)
-  render.page(st)
+  render.update_files(st, { f })
   if f.viewed then
     -- Like GitHub: the file folds away and the next one slides up under it.
     local nxt = next_file(st, f) or f
@@ -509,13 +523,13 @@ function A.toggle_viewed(st)
   else
     set_view(st, f.first_row, f.first_row)
   end
-  kick_syntax(st)
 end
 
 function A.toggle_fold(st)
   if in_sidebar(st) then
-    toggle_all(sidebar_files(st), "collapsed")
-    redraw(st)
+    local files = sidebar_files(st)
+    toggle_all(files, "collapsed")
+    redraw(st, nil, files)
     return
   end
   local row, lnum = cursor_row(st)
@@ -544,13 +558,13 @@ function A.toggle_fold(st)
       old = first.old,
       new = first.new,
       offset = math.max(0, start - top),
-    })
+    }, { row.file })
     return
   end
   local f = row.file
   f.collapsed = not f.collapsed
   local a = anchor_of(st)
-  redraw(st, { path = f.path, kind = "header", offset = math.min(a.offset, 3) })
+  redraw(st, { path = f.path, kind = "header", offset = math.min(a.offset, 3) }, { f })
 end
 
 local function step_file(st, dir)
@@ -622,7 +636,7 @@ function A.toggle_context(st)
     local first = row.hunk.lines[1] or {}
     a.old, a.new = first.old, first.new
   end
-  redraw(st, a)
+  redraw(st, a, { f })
 end
 
 function A.toggle_view(st)

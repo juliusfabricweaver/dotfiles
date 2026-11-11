@@ -137,7 +137,10 @@ function M.load(root, ref)
   end
 
   local untracked = lines_of(M.exec(root, { "ls-files", "--others", "--exclude-standard" }))
-  for _, path in ipairs(untracked) do
+  for i, path in ipairs(untracked) do
+    if i % 100 == 0 then
+      async.yield() -- many untracked files: let the editor breathe
+    end
     if path:sub(-1) ~= "/" then
       local text = M.read(root .. "/" .. path)
       files[#files + 1] = diff.untracked(path, text, text and M.split_lines(text))

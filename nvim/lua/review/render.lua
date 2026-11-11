@@ -7,7 +7,6 @@ local diff = require("review.diff")
 local M = {}
 
 M.ns = api.nvim_create_namespace("review")
-M.ns_syn = api.nvim_create_namespace("review_syntax")
 M.ns_cur = api.nvim_create_namespace("review_current")
 
 local function valid_buf(b)
@@ -120,6 +119,23 @@ end
 local line_hl = { add = "ReviewAdd", del = "ReviewDel", filler = "ReviewFiller" }
 local word_hl = { add = "ReviewAddWord", del = "ReviewDelWord" }
 
+-- Decorations -------------------------------------------------------------------
+--
+-- Nothing below is stored on the buffer. Colours are applied by a decoration
+-- provider, row by row, only for the rows Neovim is about to draw. The cost of
+-- a redraw therefore depends on the window height, not on the size of the diff.
+
+local function ext(buf, l, col, opts)
+  opts.ephemeral = true
+  opts.strict = false
+  api.nvim_buf_set_extmark(buf, M.ns, l, col, opts)
+end
+
+-- Background for the whole row, to the window edge.
+local function line_bg(buf, l, group)
+  ext(buf, l, 0, { end_row = l + 1, end_col = 0, hl_group = group, hl_eol = true, priority = 20 })
+end
+
 local function syntax_marks(buf, l, c, f, len)
   local syn = f.syn
   if not syn or not c then
@@ -133,53 +149,85 @@ local function syntax_marks(buf, l, c, f, len)
     local s = math.min(cap[1], len)
     local e = cap[2] < 0 and len or math.min(cap[2], len)
     if e > s then
-      api.nvim_buf_set_extmark(buf, M.ns_syn, l, s, {
-        end_col = e,
-        hl_group = cap[3],
-        priority = 100 + math.min(i, 90),
-      })
+      ext(buf, l, s, { end_col = e, hl_group = cap[3], priority = 100 + math.min(i, 90) })
     end
   end
 end
 
-local function decorate(buf, side, i, row, text, marks)
-  local l, kind = i - 1, row.kind
-  local function mark(col, opts)
-    api.nvim_buf_set_extmark(buf, M.ns, l, col, opts)
-  end
+local function decorate(buf, side, l, row)
+  local kind = row.kind
   if kind == "header" then
-    mark(0, { line_hl_group = "ReviewFileHeader" })
-    for _, m in ipairs(marks or {}) do
-      mark(m[1], { end_col = m[2], hl_group = m[3] })
+    line_bg(buf, l, "ReviewFileHeader")
+    if side ~= "new" then
+      local _, marks = header(row.file)
+      for _, m in ipairs(marks) do
+        ext(buf, l, m[1], { end_col = m[2], hl_group = m[3], priority = 30 })
+      end
     end
     if side ~= "old" then
       local f = row.file
-      mark(0, {
+      ext(buf, l, 0, {
         virt_text = { { f.viewed and "☑ Viewed " or "☐ Viewed ", f.viewed and "ReviewViewedOn" or "ReviewViewedOff" } },
         virt_text_pos = "right_align",
         hl_mode = "combine",
       })
     end
   elseif kind == "hunk" or kind == "expander" then
-    mark(0, { line_hl_group = "ReviewHunk" })
+    line_bg(buf, l, "ReviewHunk")
   elseif kind == "note" then
-    mark(0, { line_hl_group = "ReviewNote" })
+    line_bg(buf, l, "ReviewNote")
   elseif kind == "line" then
     local c = cell(row, side)
     local ck = cell_kind(c, side)
     if line_hl[ck] then
-      mark(0, { line_hl_group = line_hl[ck] })
+      line_bg(buf, l, line_hl[ck])
     end
-    if c and c.words and word_hl[ck] then
+    if not c then
+      return
+    end
+    local len = #c.text
+    if c.words and word_hl[ck] then
       for _, w in ipairs(c.words) do
-        if w[2] > w[1] and w[2] <= #text then
-          mark(w[1], { end_col = w[2], hl_group = word_hl[ck], priority = 200 })
+        if w[2] > w[1] and w[2] <= len then
+          ext(buf, l, w[1], { end_col = w[2], hl_group = word_hl[ck], priority = 200 })
         end
       end
     end
-    syntax_marks(buf, l, c, row.file, #text)
+    syntax_marks(buf, l, c, row.file, len)
   end
 end
+
+api.nvim_set_decoration_provider(M.ns, {
+  on_win = function(_, _, buf, top, bot)
+    local st = S.cur
+    if not st or not st.side_of[buf] then
+      return false
+    end
+    -- Files coming into view get their syntax colours computed (once).
+    if st.on_visible then
+      local last
+      for i = top + 1, bot + 1 do
+        local row = st.rows[i]
+        local f = row and row.file
+        if f and f ~= last then
+          last = f
+          if not f.syn and not f.syn_queued and not f.collapsed and not f.binary and #f.hunks > 0 then
+            st.on_visible(f)
+          end
+        end
+      end
+    end
+    return true
+  end,
+  on_line = function(_, _, buf, l)
+    local st = S.cur
+    local side = st and st.side_of[buf]
+    local row = side and st.rows[l + 1]
+    if row then
+      decorate(buf, side, l, row)
+    end
+  end,
+})
 
 local function sides(st)
   local list = {}
@@ -191,21 +239,10 @@ local function sides(st)
   return list
 end
 
---- Re-apply only the syntax colours of one file (after they were computed).
-function M.apply_syntax(st, f)
-  if not f.first_row or f.collapsed then
-    return
-  end
+--- Ask Neovim to draw the page again (after colours became available).
+function M.refresh(st)
   for _, bs in ipairs(sides(st)) do
-    local buf, side = bs[1], bs[2]
-    api.nvim_buf_clear_namespace(buf, M.ns_syn, f.first_row - 1, f.last_row)
-    for i = f.first_row, f.last_row do
-      local row = st.rows[i]
-      if row and row.kind == "line" then
-        local c = cell(row, side)
-        syntax_marks(buf, i - 1, c, f, c and #c.text or 0)
-      end
-    end
+    pcall(api.nvim__redraw, { buf = bs[1], valid = false })
   end
 end
 
@@ -385,30 +422,67 @@ end
 
 -- Page -------------------------------------------------------------------------
 
---- Rebuild rows from the files and redraw everything. Cursor placement is the
---- caller's job.
+--- Rebuild every row from the files and replace the page text. Cursor
+--- placement is the caller's job.
 function M.page(st)
   st.rows = diff.rows(st.files, st.view)
   st.numw = num_width(st)
   local empty = #st.rows == 0
   for _, bs in ipairs(sides(st)) do
     local buf, side = bs[1], bs[2]
-    local lines, marks = {}, {}
+    local lines = {}
     for i, row in ipairs(st.rows) do
-      lines[i], marks[i] = row_text(row, side)
+      lines[i] = row_text(row, side)
     end
     if empty then
       lines = { side == "new" and "" or ("  No changes against " .. st.base_ref) }
     end
     set_lines(buf, lines)
-    api.nvim_buf_clear_namespace(buf, M.ns, 0, -1)
-    api.nvim_buf_clear_namespace(buf, M.ns_syn, 0, -1)
-    for i, row in ipairs(st.rows) do
-      decorate(buf, side, i, row, lines[i], marks[i])
-    end
   end
   M.winbars(st)
   M.sidebar(st)
+end
+
+--- Redo only the rows of `files` (after a fold, a viewed mark, shown or
+--- hidden context). Everything else on the page is left untouched, so the
+--- cost depends on those files, not on the size of the whole diff.
+function M.update_files(st, files)
+  local bufs = sides(st)
+  for _, f in ipairs(files) do
+    local new = diff.file_rows(f, st.view)
+    local a, b, total = f.first_row, f.last_row, #st.rows
+    local delta = #new - (b - a + 1)
+    if delta ~= 0 then
+      table.move(st.rows, b + 1, total, b + 1 + delta)
+      for i = total + delta + 1, total do
+        st.rows[i] = nil
+      end
+      local after = false
+      for _, c in ipairs(st.files) do
+        if after then
+          c.first_row, c.last_row = c.first_row + delta, c.last_row + delta
+        end
+        after = after or c == f
+      end
+      f.last_row = b + delta
+    end
+    for i, row in ipairs(new) do
+      st.rows[a + i - 1] = row
+    end
+    for _, bs in ipairs(bufs) do
+      local lines = {}
+      for i, row in ipairs(new) do
+        lines[i] = row_text(row, bs[2])
+      end
+      vim.bo[bs[1]].modifiable = true
+      api.nvim_buf_set_lines(bs[1], a - 1, b, false, lines)
+      vim.bo[bs[1]].modifiable = false
+    end
+  end
+  st.numw = num_width(st)
+  M.winbars(st)
+  M.sidebar(st)
+  M.refresh(st)
 end
 
 return M
